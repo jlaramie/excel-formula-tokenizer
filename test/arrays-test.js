@@ -269,6 +269,49 @@ describe('arrays', function () {
             ['ARRAY', 'function', 'stop']
           ],
           options
+        ],
+        [
+          '{{1,1.2,2;3,3.4,4};{5,5.6,6;7,7.8,8}}',
+          [
+            ['ARRAY', 'function', 'start'],
+            ['ARRAYROW', 'function', 'start'],
+            // First Column
+            ['ARRAY', 'function', 'start'],
+            ['ARRAYROW', 'function', 'start'],
+            ['1.1', 'operand', 'number'],
+            [',', 'argument', ''],
+            ['2.2', 'operand', 'number'],
+            ['ARRAYROW', 'function', 'stop'],
+            [';', 'argument', ''],
+            ['ARRAYROW', 'function', 'start'],
+            ['3.3', 'operand', 'number'],
+            [',', 'argument', ''],
+            ['4.4', 'operand', 'number'],
+            ['ARRAYROW', 'function', 'stop'],
+            ['ARRAY', 'function', 'stop'],
+            // Divider
+            ['ARRAYROW', 'function', 'stop'],
+            [';', 'argument', ''],
+            ['ARRAYROW', 'function', 'start'],
+            // Second Column
+            ['ARRAY', 'function', 'start'],
+            ['ARRAYROW', 'function', 'start'],
+            ['5.5', 'operand', 'number'],
+            [',', 'argument', ''],
+            ['6.6', 'operand', 'number'],
+            ['ARRAYROW', 'function', 'stop'],
+            [';', 'argument', ''],
+            ['ARRAYROW', 'function', 'start'],
+            ['7.7', 'operand', 'number'],
+            [',', 'argument', ''],
+            ['8.8', 'operand', 'number'],
+            ['ARRAYROW', 'function', 'stop'],
+            ['ARRAY', 'function', 'stop'],
+            // End
+            ['ARRAYROW', 'function', 'stop'],
+            ['ARRAY', 'function', 'stop']
+          ],
+          options
         ]
       ].forEach(itBlock);
     });

@@ -1,5 +1,7 @@
 var languages = require('./languages');
 
+var TOK_TYPE_ROOT = 'root';
+var TOK_TYPE_FORMULA = 'formula';
 var TOK_TYPE_COMMENT = 'comment';
 
 var TOK_TYPE_NOOP = 'noop';
@@ -34,6 +36,8 @@ var TOK_VALUE_TRUE = 'TRUE';
 var TOK_VALUE_FALSE = 'FALSE';
 
 var TYPES = {
+  TOK_TYPE_ROOT: TOK_TYPE_ROOT,
+  TOK_TYPE_FORMULA: TOK_TYPE_FORMULA,
   TOK_TYPE_COMMENT: TOK_TYPE_COMMENT,
   TOK_TYPE_NOOP: TOK_TYPE_NOOP,
   TOK_TYPE_OPERAND: TOK_TYPE_OPERAND,
@@ -264,16 +268,23 @@ function tokenize(formula, options) {
   var inError = false;
   var inNumeric = false;
   var inComment = false;
+  var inFormula = false;
+  var inArray = 0;
 
-  while (formula.length > 0) {
-    if (formula.substr(0, 1) == ' ') {
-      formula = formula.substr(1);
-    } else {
-      if (formula.substr(0, 1) == '=') {
+  if (options.root) {
+    tokenStack.push(tokens.add(token, TOK_TYPE_ROOT, TOK_SUBTYPE_START));
+  } else {
+    while (formula.length > 0) {
+      if (formula.substr(0, 1) == ' ') {
         formula = formula.substr(1);
+      } else {
+        if (formula.substr(0, 1) == '=') {
+          formula = formula.substr(1);
+        }
+        break;
       }
-      break;
     }
+    inFormula = true;
   }
 
   while (!EOF()) {
@@ -304,6 +315,44 @@ function tokenize(formula, options) {
       if (currentChar() === ' ') {
         offset += 1;
       }
+      continue;
+    }
+
+    if (inNumeric) {
+      if ([language.decimalSeparator, 'E'].indexOf(currentChar()) != -1 || /\d/.test(currentChar())) {
+        token += currentChar();
+
+        offset += 1;
+        continue;
+      } else if ('+-'.indexOf(currentChar()) != -1 && language.isScientificNotation(token)) {
+        token += currentChar();
+
+        offset += 1;
+        continue;
+      } else {
+        inNumeric = false;
+        var jsValue = options.preserveLanguage ? token : language.reformatNumberForJsParsing(token);
+        tokens.add(jsValue, TOK_TYPE_OPERAND, TOK_SUBTYPE_NUMBER);
+        token = '';
+      }
+    }
+
+    let isInsideSomething = inString || inPath || inRange || inError || inNumeric || inComment || inArray > 0;
+    if (
+      currentChar() === language.formulaSeparator &&
+      inFormula &&
+      options.root &&
+      !isInsideSomething &&
+      tokenStack.type() === TOK_TYPE_FORMULA
+    ) {
+      tokens.addRef(tokenStack.pop(currentChar()));
+      inFormula = false;
+      offset += 1;
+      continue;
+    } else if (currentChar() === '=' && !inFormula && options.root && tokenStack.type() === TOK_TYPE_ROOT) {
+      tokenStack.push(tokens.add(currentChar(), TOK_TYPE_FORMULA, TOK_SUBTYPE_START));
+      inFormula = true;
+      offset += 1;
       continue;
     }
 
@@ -375,25 +424,6 @@ function tokenize(formula, options) {
         token = '';
       }
       continue;
-    }
-
-    if (inNumeric) {
-      if ([language.decimalSeparator, 'E'].indexOf(currentChar()) != -1 || /\d/.test(currentChar())) {
-        token += currentChar();
-
-        offset += 1;
-        continue;
-      } else if ('+-'.indexOf(currentChar()) != -1 && language.isScientificNotation(token)) {
-        token += currentChar();
-
-        offset += 1;
-        continue;
-      } else {
-        inNumeric = false;
-        var jsValue = options.preserveLanguage ? token : language.reformatNumberForJsParsing(token);
-        tokens.add(jsValue, TOK_TYPE_OPERAND, TOK_SUBTYPE_NUMBER);
-        token = '';
-      }
     }
 
     // scientific notation check
@@ -492,6 +522,7 @@ function tokenize(formula, options) {
 
       tokenStack.push(tokens.add(TOK_VALUE_ARRAY, TOK_TYPE_FUNCTION, TOK_SUBTYPE_START));
       tokenStack.push(tokens.add(TOK_VALUE_ARRAYROW, TOK_TYPE_FUNCTION, TOK_SUBTYPE_START));
+      inArray += 1;
       offset += 1;
       continue;
     }
@@ -515,6 +546,7 @@ function tokenize(formula, options) {
 
       tokens.addRef(tokenStack.pop(TOK_VALUE_ARRAYROW));
       tokens.addRef(tokenStack.pop(TOK_VALUE_ARRAY));
+      inArray -= 1;
       offset += 1;
       continue;
     }
@@ -722,8 +754,6 @@ function tokenize(formula, options) {
   }
 
   tokens.reset();
-
-  console.log(tokens.toArray());
 
   return options.asClass ? tokens : tokens.toArray();
 }
