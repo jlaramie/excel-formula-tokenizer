@@ -1,5 +1,7 @@
 var languages = require('./languages');
 
+var TOK_TYPE_COMMENT = 'comment';
+
 var TOK_TYPE_NOOP = 'noop';
 var TOK_TYPE_OPERAND = 'operand';
 var TOK_TYPE_FUNCTION = 'function';
@@ -10,6 +12,7 @@ var TOK_TYPE_OP_IN = 'operator-infix';
 var TOK_TYPE_OP_POST = 'operator-postfix';
 var TOK_TYPE_WSPACE = 'white-space';
 var TOK_TYPE_UNKNOWN = 'unknown';
+var TOK_TYPE_INLINE = 'inline';
 
 var TOK_SUBTYPE_START = 'start';
 var TOK_SUBTYPE_STOP = 'stop';
@@ -31,6 +34,7 @@ var TOK_VALUE_TRUE = 'TRUE';
 var TOK_VALUE_FALSE = 'FALSE';
 
 var TYPES = {
+  TOK_TYPE_COMMENT: TOK_TYPE_COMMENT,
   TOK_TYPE_NOOP: TOK_TYPE_NOOP,
   TOK_TYPE_OPERAND: TOK_TYPE_OPERAND,
   TOK_TYPE_FUNCTION: TOK_TYPE_FUNCTION,
@@ -42,6 +46,7 @@ var TYPES = {
   TOK_TYPE_WHITE_SPACE: TOK_TYPE_WSPACE,
   TOK_TYPE_WSPACE: TOK_TYPE_WSPACE,
   TOK_TYPE_UNKNOWN: TOK_TYPE_UNKNOWN,
+  TOK_TYPE_INLINE: TOK_TYPE_INLINE,
   TOK_SUBTYPE_START: TOK_SUBTYPE_START,
   TOK_SUBTYPE_STOP: TOK_SUBTYPE_STOP,
   TOK_SUBTYPE_TEXT: TOK_SUBTYPE_TEXT,
@@ -206,6 +211,27 @@ function tokenize(formula, options) {
     return false;
   };
 
+  /**
+   * Attempts reach behind and see from the last new line if all characters are blank
+   */
+  var isPreviousCharactersBlankOrNewLine = function () {
+    var offsetCopy = offset - 1;
+    if (offsetCopy <= 0) return true;
+
+    while (offsetCopy > 0) {
+      if (/\n|\r/.test(formula[offsetCopy])) {
+        return true;
+      }
+
+      if (!/\s/.test(formula[offsetCopy])) {
+        return false;
+      }
+
+      offsetCopy -= 1;
+    }
+    return false;
+  };
+
   var isNextNonDigitTheRangeOperator = function () {
     var offsetCopy = offset;
 
@@ -237,6 +263,7 @@ function tokenize(formula, options) {
   var inRange = false;
   var inError = false;
   var inNumeric = false;
+  var inComment = false;
 
   while (formula.length > 0) {
     if (formula.substr(0, 1) == ' ') {
@@ -250,6 +277,36 @@ function tokenize(formula, options) {
   }
 
   while (!EOF()) {
+    // comments
+    // comments can be direct children of the
+
+    if (inComment) {
+      if (currentChar() == '\n' || doubleChar() == '\r\n' || (inComment === TOK_TYPE_INLINE && doubleChar() === '*/')) {
+        tokens.add(token.trim(), TOK_TYPE_COMMENT, inComment === TOK_TYPE_INLINE ? TOK_TYPE_INLINE : '');
+        token = '';
+        if (doubleChar() === '\r\n' || doubleChar() === '*/') {
+          offset += 1;
+        }
+        inComment = false;
+      } else {
+        token += currentChar();
+      }
+
+      offset += 1;
+      continue;
+    } else if (
+      ((doubleChar() === '//' && isPreviousCharactersBlankOrNewLine()) || doubleChar() === '/*') &&
+      token.trim().length === 0
+    ) {
+      token = token.trim();
+      inComment = doubleChar() === '/*' ? TOK_TYPE_INLINE : true;
+      offset += 2;
+      if (currentChar() === ' ') {
+        offset += 1;
+      }
+      continue;
+    }
+
     // state-dependent character evaluation (order is important)
 
     // double-quoted strings
@@ -529,13 +586,18 @@ function tokenize(formula, options) {
     }
 
     // token accumulation
-
-    token += currentChar();
+    if (currentChar() !== '\r' && currentChar() !== '\n') {
+      token += currentChar();
+    }
     offset += 1;
   }
 
   // dump remaining accumulation
   checkAndAddToken(token, TOK_TYPE_OPERAND);
+
+  while (tokenStack.items.length > 0) {
+    tokens.addRef(tokenStack.pop());
+  }
 
   // move all tokens to a new collection, excluding all unnecessary white-space tokens
 
@@ -660,6 +722,8 @@ function tokenize(formula, options) {
   }
 
   tokens.reset();
+
+  console.log(tokens.toArray());
 
   return options.asClass ? tokens : tokens.toArray();
 }
